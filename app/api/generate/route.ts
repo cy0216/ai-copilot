@@ -1,70 +1,73 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 
-// 初始化 Gemini 客户端（自动读取环境变量中的 GEMINI_API_KEY）
-const ai = new GoogleGenAI({});
+// 初始化豆包客户端
+const openai = new OpenAI({
+    apiKey: process.env.DOUBAO_API_KEY,
+    baseURL: "https://ark.cn-beijing.volces.com/api/v3", // 火山引擎兼容端点
+});
 
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
-        const { prompt, userId } = body;
+        const { prompt } = await request.json();
 
-        if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-            return NextResponse.json(
-                { error: "提示词 (prompt) 不能为空！" },
-                { status: 400 }
-            );
+        if (!prompt) {
+            return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
         }
 
-        // 1. 调用 Gemini 2.5 Flash 模型生成流式响应
-        const responseStream = await ai.models.generateContentStream({
-            model: "gemini-2.5-flash",
-            contents: prompt,
+        // 1. 调用豆包模型（开启流式响应）
+        const stream = await openai.chat.completions.create({
+            model: process.env.DOUBAO_ENDPOINT_ID || "",
+            messages: [
+                { role: "system", content: "你是一个极其有用的 AI 助手。" },
+                { role: "user", content: prompt },
+            ],
+            stream: true,
         });
 
-        const encoder = new TextEncoder();
+        // 2. 将 OpenAI 格式的流转为 ReadableStream 给前端打字机渲染，同时累加完整文本
         let fullText = "";
+        const encoder = new TextEncoder();
 
-        // 2. 创建 Web 标准可读流，实时推送到前端
-        const stream = new ReadableStream({
+        const customStream = new ReadableStream({
             async start(controller) {
-                try {
-                    for await (const chunk of responseStream) {
-                        const textChunk = chunk.text || "";
-                        fullText += textChunk;
-                        controller.enqueue(encoder.encode(textChunk));
+                for await (const chunk of stream) {
+                    const text = chunk.choices[0]?.delta?.content || "";
+                    if (text) {
+                        fullText += text;
+                        controller.enqueue(encoder.encode(text));
                     }
-
-                    // 流接收完成后，将最终文本写入 Supabase
-                    if (fullText) {
-                        await supabase.from("prompt_history").insert([
-                            {
-                                prompt: prompt,
-                                response: fullText,
-                                ...(userId ? { user_id: userId } : {}),
-                            },
-                        ]);
-                    }
-                } catch (err) {
-                    console.error("Gemini Streaming Error:", err);
-                } finally {
-                    controller.close();
                 }
+
+                // 流传输结束后，异步写入 Supabase 保存记录
+                if (fullText.trim()) {
+                    supabase
+                        .from("messages")
+                        .insert([
+                            { role: "user", content: prompt },
+                            { role: "assistant", content: fullText },
+                        ])
+                        .then(({ error }) => {
+                            if (error) console.error("Supabase error:", error);
+                        });
+                }
+
+                controller.close();
             },
         });
 
-        return new Response(stream, {
+        return new Response(customStream, {
             headers: {
-                "Content-Type": "text/plain; charset=utf-8",
+                "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
             },
         });
-        //test
-    } catch (error) {
-        console.error("API Route Error:", error);
+    } catch (error: any) {
+        console.error("Doubao API Error:", error);
         return NextResponse.json(
-            { error: "调用 Gemini API 失败，请检查密钥或网络状态。" },
+            { error: error.message || "Internal Server Error" },
             { status: 500 }
         );
     }
