@@ -94,7 +94,7 @@ export default function HomePage() {
         <main className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center p-6 text-center">
             <div className="max-w-3xl space-y-4">
                 <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">
-                    下一代 <span className="text-blue-500">AI 智能创作</span> 助手
+                    超绝 <span className="text-blue-500">AI 大王范本</span> 测试
                 </h1>
                 <p className="text-lg text-muted-foreground">
                     基于 Next.js 与 Supabase 构建，帮助你高效完成内容创作、代码生成与知识库检索。
