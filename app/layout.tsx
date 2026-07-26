@@ -30,7 +30,7 @@ export default function RootLayout({
             1. bg-[url('/bg.jpg')] 引入 public/bg.jpg
             2. bg-cover bg-center bg-fixed 保证图片铺满且固定不随滚动条偏移
           */}
-            <div className="relative min-h-screen bg-[url('/bg.jpg')] bg-cover bg-center bg-fixed">
+            <div className="relative min-h-screen bg-[url('/bg.png')] bg-cover bg-center bg-fixed">
 
                 {/*
               遮罩层：
